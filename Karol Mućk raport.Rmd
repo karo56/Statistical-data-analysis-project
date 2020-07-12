@@ -1,0 +1,346 @@
+---
+title: "raport SAD projekt"
+author: "Karol Mućk 394362"
+date: "4 05 2020"
+output: html_document
+---
+```{r include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(ggpubr)
+library(Rmisc)
+library(GGally)
+library(dplyr)
+library(hrbrthemes)
+library(GGally)
+library(viridis)
+library(data.table)
+library(MASS)
+library(ggpubr)
+library(regclass)
+```
+
+
+```{r}
+#Wczytanie danych
+url <- "https://www.mimuw.edu.pl/~szczurek/SAD1/ZadanieZaliczeniowe/people.tab"
+
+df <- read.table(url, sep = '\t',header = TRUE)
+```
+
+```{r}
+head(df)
+```
+W projekcie mamy do dyspozycji dane opisujące 8 różnych zmiennych. Pięć z nich jest zmiennymi ilościowymi: wiek, wzrost, waga, liczba dzieci oraz wydatki, natomiast trzy z nich są zmiennymi jakoświowymi: płeć, stan cywilny, posiadane zwierzę domowe. Łącznie mamy 500 obserwacji. Aby przyjrzeć się bliżej danym użyjemy funkcji summary.
+
+```{r}
+summary(df)
+```
+Widzimy, że dane kompletne. Infomracje dotyczące m. in. mediany wykorzystamy później.  
+
+Możemy policzyć VIF, aby zobaczyć korelację pomiedzy danymi.
+```{r}
+buff <- lm(expenses~. ,data=df)
+VIF(buff)
+
+```
+
+
+<b> 2)Wizualizacja danych</b>
+
+Do lepszego zrozumienia danych warto je zwizualizować kilkoma wykresami.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggpairs(df, columns=c(1,2,3,6,8))
+#pairs(~age+weight+height+number_of_kids,data = df,
+#      main = "Scatterplot Matrix", color="#00AFBB")
+
+```
+
+
+Wykres przedstawia wykresy wszystkich kombinacji zmiennych ilościowych. Widizmy, że w zmiennych waga i wzrost wystepuje liniowa korelacja, tak samo jak dla zmiennych wiek i wydadki.
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(df, aes(x=weight,fill=gender, color=gender)) +
+  geom_histogram(alpha=0.5, position="identity")
+```
+
+Wykres słupkowy przedstawia rozkład zmiennej waga, kolorem oznaczona jest płeć.
+
+
+```{r echo=FALSE, warning=FALSE}
+
+ggplot(df, aes(x=gender, y=height, fill=gender)) + 
+  geom_boxplot(alpha=1) +
+  theme(legend.position="none")
+
+```
+
+Do wizulaizacji zmiennej wzrost zastosujemy wykres pudełkowy, ponowinie kolorem zostaje oznaczona płeć.
+
+```{r echo=FALSE, warning=FALSE}
+
+freq = as.data.frame(table(unlist(df[[1]])))
+
+ggplot(freq, aes(x=Var1, y=Freq,group=1)) +
+  geom_line(col = "grey")+
+  geom_point(shape=21, color="black", fill="#69b3a2", size=4) +
+  theme(axis.text.x = element_text(angle = 70, hjust = 1,size = 8))+
+  ylab("count")+
+  xlab("wiek")
+
+```
+
+Wykres przedstawia rozkład zmiennej wiek. Widzimy, że dane zawierają głównie ludzi w średnim wieku co się zgadza z medianą która wynosi 39.
+
+```{r echo=FALSE, warning=FALSE}
+pet_freq = as.data.frame(table(unlist(df[[7]])))
+
+names <- c("pet", "count")
+colnames(pet_freq) <- names
+
+pet_freq$fraction = pet_freq$count / sum(pet_freq$count)
+pet_freq$ymax = cumsum(pet_freq$fraction)
+pet_freq$ymin = c(0, head(pet_freq$ymax, n=-1))
+
+ggplot(pet_freq, aes(ymax=ymax, ymin=ymin, xmax=4, xmin=3, fill=pet)) +
+  geom_rect() +
+  coord_polar(theta="y") + 
+  xlim(c(2, 4))
+                  
+
+```
+
+Na wykresie kołowym widać które zwierzę jest najpopularniejsze wśród naszych obserwacji. Najwięcej osób nie posiada zwierzęcia, jest to dokładnie 187 osoby.
+
+
+```{r echo=FALSE}
+ggplot(df, aes(x=pet, y=expenses, fill=pet)) + 
+  geom_violin()
+```
+
+
+Wykres przedstawia rozkład wydadków (expenss) właścicieli róznych zierząt.
+
+
+```{r echo=FALSE, fig.cap="", out.width = '90%'}
+knitr::include_graphics("plot.png")
+```
+
+Wykres typu parallel przedstawia wszystkie zmienne na jednym wykresie, kolorem oznaczona jest płeć.
+Z uwagii na ilość obserwacji wykres nie jest bardzo czytelny, ale możemy z niego wyczytać, że wszystkie zmienne ilościowe nie mają korelacji z płcią. Ponownie widzimy też zależność pomiędzy wiekiem a wydatkami.
+
+
+<b> 3)przedziały ufności dla wartości średniej i wariancji dla zmiennych wiek i wzrost</b>
+
+Policzymy przedział ufności zakładając, że zmienna wiek i wzrost są zmiennymi o rozkładzie normalnym, aby to sprawdzić narysujemy wykres kwantylowy dla zmiennej wiek oraz wzrost.
+
+Zmienna wiek:
+```{r}
+ggplot(df, aes(sample = age), sub="wiek") + stat_qq()+ stat_qq_line()
+
+```
+
+Zmienna wzrost:
+```{r}
+ggplot(df, aes(sample = height)) + stat_qq()+ stat_qq_line()
+```
+
+Widzimy, że w obu przypadkach dane znajdują się bardzo blisko prostej, dlatego możemy zakładać, że mają rozkład normalny.
+Teraz, policzymy przedział ufności dla średniej o wspólczyniku ufności 0.95. 
+
+Jak się później okaże (testując hipotezy) zmienna wiek nie ma rozkładu normalnego. Najprawdopodobiej ma to miejsce przez odstające obserwacje, dlatego spodziewamy się, że dla zmiennej wiek wyniki będą bardziej prawidłowe.
+```{r}
+
+wiek = df[[1]]
+wzrost = df[[3]]
+
+n = length(wiek) #wiek wzorst mają tyle samo prób
+
+#średnia z próby
+mu<-mean(wiek)
+mu2<-mean(wzrost)
+
+#odchylenie standardowe
+sigma<-sd(wiek)
+sigma2<-sd(wzrost)
+
+```
+
+Ostatecznie dostajemy przedział ufności dla zmiennej wiek.
+```{r}
+
+round(mu+c(-1,1)*sigma/sqrt(n)*qnorm(.975),2)
+
+```
+
+Oraz dla zmiennej wzrost.
+```{r}
+
+round(mu2+c(-1,1)*sigma2/sqrt(n)*qnorm(.975),2)
+
+```
+
+Teraz policzymy przedział ufności dla wariancji o wspólczyniku ufności 0.95 dla zmiennej wiek.
+
+```{r}
+
+conf_level = 0.95
+
+x = qchisq((1 - conf_level)/2, n-1, lower.tail = FALSE)
+y = qchisq((1 - conf_level)/2, n-1)
+
+v = var(wiek)
+wiek_var = c((n-1)*v/x,(n-1)*v/y)
+wiek_var
+```
+
+Oraz dla zmiennej wzrost.
+```{r}
+v = var(wzrost)
+wzrost_var = c((n-1)*v/x,(n-1)*v/y)
+wzrost_var
+```
+
+Warto tutaj zobaczyć jak wyglądają przedziały ufności dla odchyleń standardowych.
+
+Dla zmiennej wiek.
+```{r}
+sqrt(wiek_var)
+```
+Oraz dla zmiennej wzrost.
+```{r}
+sqrt(wzrost_var)
+```
+
+<b> 4)Testowanie hipotez</b>
+
+<b>Podpunkt 1</b>
+
+Niech $\mu_{0}$ będzie średnim wzrostem dla kobiet, natomiast $\mu_{1}$ średnim wzrostem dla mężczyzn.\
+
+
+Sformułujmy hipotezę zerową\
+
+$H_{0}$ : $\mu_{0} = \mu_{1}$\
+
+Wobec hipotezy alternatywnej\
+
+$H_{1}$: $\mu_{0} \ne \mu_{1}$
+
+Do weryfikacji hipotezy zastosujemy test t-studenta. Aby móc przeprowadziś test wzrost musi być zmienną o rozkładzie normalnym. Wiemy, że tak jest dzięki porzednim analizom.
+```{r}
+wzrost_men = df[df$gender == "man",3]
+wzrost_kob = df[df$gender == "woman",3]
+
+t.test(wzrost_men, wzrost_kob, alternative = "two.sided", var.equal = FALSE)
+```
+P-value świadczy o tym, że nie ma powodu do odrzucenia hipotezy zerowej, na rzecz hipotezy alternatywnej.
+
+<b>Podpunkt 2</b>
+
+Sformułujmy hipotezę zerową\
+
+$H_{0}$ : zmienne wiek i wzrost są niezależne\
+
+Wobec hipotezy alternatywnej\
+
+$H_{1}$: istnieje jakikolwiek rodzaj zależności między zmiennymi wiek i wzrost \
+
+Do przetestwoania hipotezy skorzystamy z testu $\rho-Persona$
+```{r}
+cor.test(wiek, wzrost, method = "pearson")
+```
+Wysoka wartość p value świadczy o tym,że nie ma podstaw do odrzucenia hipotezy o niezależności wieku i wzrostu.
+
+<b>Podpunkt 3</b>
+
+Sformułujmy hipotezę zerową
+
+$H_{0}$ : zmienne zwierzę i stan cywilny są niezależne
+
+Wobec hipotezy alternatywnej
+
+$H_{1}$: istnieje jakikolwiek rodzaj zależności między zmiennymi zwierzę i stan cywilny
+
+Do weryfikacji hipotezy zastosujemy test chi-kwadrat $(X^{2})$
+```{r}
+tbl = table(df$pet,df$married) #macierz kontyngencji
+chisq.test(tbl) 
+```
+P- value jest większa niż poziom istotność 0.05 zatem nie mamy powodu do odrzuecnia hipotezy zerowej.
+
+<b>Podpunkt 4</b>
+
+Sformułujmy hipotezę zerową
+
+$H_{0}$ : zmienna wiek jest zmienną o rozkładzie normlanym
+
+Wobec hipotezy alternatywnej
+
+$H_{1}$: zmienna wiek nie jest zmienną o rozkładzie normlanym
+
+Do zweryfikowania hipotez zastosujemy test Shapiro-Wilka.
+```{r}
+shapiro.test(wiek)
+```
+Niska wartość p świadczy o tym, że możemy odrzucić hipotezę zerową na rzecz hipotezy altenatywnej.
+
+
+<b> 5)Regresja liniowa</b>
+
+Zaimplementujmy model regresji liniowej używając wszystkich zmiennych.
+```{r}
+attach(df)
+linearMod <- lm(expenses ~ ., data = df)
+```
+
+Aby zobaczyć wszystkie interesujace nas parametry takie jak $RSS$ czy $R^{2}$ zastosujemy funkcję summary.
+```{r}
+summary(linearMod)
+```
+
+
+Widzimy, że zmienną która najlepiej opisuje wydadtki jest wiek. Możnabyło się tego spodziewać patrząć na wykresy na samym początku. Przypomnijmy ten wykres.
+
+```{r, echo = FALSE}
+ggplot(df, aes(x=age, y=expenses, colour = gender)) + geom_point()
+```
+
+Przeanalizyjmy teraz model za pomocą wykresów diagnostycznych.
+
+```{r, echo = FALSE}
+plot(linearMod, which = 1)
+```
+
+Dzięki temu wykresowi możemy zobaczyć czy zależność  danych jest liniowa. Widzimy, że tam gdzie mamy dużo danych czerwona linia bardzo przypomina prostą. Dalej, mamy do czynienia z małą liczbą danych i krzywa zaczyna się wykrzywiać.
+
+```{r, echo = FALSE}
+plot(linearMod, which = 3)
+```
+
+Wykres przedstawia zależność $Y$ od $\hat{Y}$. Dzięki temu wykresowi możemy sprawdzić założenie o homoscedastyczności składnika losowego. Czerwona linia przedstawia trend. Widzimy, że wariancja jest bardzo zbliżona dla danych. Widać również, że linia delitaknie rośnie wraz ze wraz ze zwiększeniem wydatków jendak wtedy również mamy doczynienia z małą liczbą danych, co sprawia, że estymacja jest bardzo niepewna.
+
+```{r, echo = FALSE}
+plot(linearMod, which = 2)
+```
+
+Widzimy, że rozkład residuów  jest bardzo zbliżony do rozkłądu normalnego. Nie musimy przeprowadzać żadnych transofrmacji zmiennych.
+
+
+```{r, echo = FALSE}
+plot(linearMod, which = 5)
+```
+
+Wykres przedstawia jaki wpływ na ocenę współczyników ma dana oserwacja. Widzimy, że wartości residuów nie są znacząco różne od zera, co dobrze świadczy o naszym modelu. Widzimy również małą liczbę danych odstających.
+
+```{r, echo = FALSE}
+plot(linearMod, which = 4)
+```
+
+Możemy również przedstawić wpływ każdej obserwacji na postać regresji za pomocą odległości Cooka. Widzimy, trzy wyraźnie odstające dane, jednak dla żadnej z nich odległość jest większa niż 1 więc nie są one wpływowe.
+
+
+
+Na koniec policzmy przedział ufności dla parametrów.
+```{r}
+confint(linearMod)
+```
