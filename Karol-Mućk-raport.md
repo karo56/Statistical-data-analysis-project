@@ -1,6 +1,6 @@
 raport SAD projekt
 ================
-Karol Mućk 394362
+Karol Mućk 
 4 05 2020
 
 ``` r
