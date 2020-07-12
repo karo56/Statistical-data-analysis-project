@@ -2,7 +2,7 @@
 title: "raport SAD projekt"
 author: "Karol Mućk 394362"
 date: "4 05 2020"
-output: html_document
+output: rmarkdown::github_document
 ---
 ```{r include=FALSE}
 library(ggplot2)
